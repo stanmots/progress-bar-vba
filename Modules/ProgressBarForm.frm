@@ -13,13 +13,17 @@ Attribute VB_GlobalNameSpace = False
 Attribute VB_Creatable = False
 Attribute VB_PredeclaredId = True
 Attribute VB_Exposed = False
+
+
+
 Private Const DetailsButtonOpenStateMark As String = ">>"
 Private Const DetailsButtonClosedStateMark As String = "<<"
 
 Private DetailsFrameState As DetailsFrameStateType
 
+'use byte, because we need store only percent values (0-100)
 Private CurrentLoopPercent As Byte
-Private IgnoreLoopsCount As Long
+Private IgnoredLoopsCount As Long
 Private WithEvents CurrentPercentValue As IntegerWrapper
 Attribute CurrentPercentValue.VB_VarHelpID = -1
 
@@ -46,18 +50,22 @@ End Property
 Public Sub SetMainLabelText(ByVal text As String)
 
 Me.MainProcessLabel.Caption = text
+Me.Repaint
 
 End Sub
 
 Public Sub SetCurrentOperationLabelText(ByVal text As String)
 
 Me.CurrentOperationLabel.Caption = text
+Me.Repaint
 
 End Sub
 
 Public Sub AddMessageToDetailsBox(ByVal msg As String)
 
 Me.DetailsTextBox.text = Me.DetailsTextBox.text & "[" & Format(Now(), "hh:mm:ss") & "] - " & msg & vbCrLf
+
+Me.Repaint
 
 End Sub
 
@@ -76,7 +84,7 @@ PercentWithRoundError = CurrentLoopPercent * LoopsNumber
 If PercentWithRoundError < AddedOverallPercentValue Then
     IncreaseProgressByPercent AddedOverallPercentValue - PercentWithRoundError
 ElseIf PercentWithRoundError > AddedOverallPercentValue Then
-    IgnoreLoopsCount = PercentWithRoundError - AddedOverallPercentValue
+    IgnoredLoopsCount = PercentWithRoundError - AddedOverallPercentValue
 End If
 
 End Sub
@@ -89,11 +97,35 @@ End Sub
 
 Public Sub IncreaseProgressInsideLoop()
 
-If IgnoreLoopsCount = 0 Then
+If IgnoredLoopsCount = 0 Then
     IncreaseProgressByPercent CurrentLoopPercent
 Else
-    IgnoreLoopsCount = IgnoreLoopsCount - 1
+    IgnoredLoopsCount = IgnoredLoopsCount - 1
 End If
+
+End Sub
+
+Public Sub FinishProgress()
+
+CurrentPercentValue.Value = 100
+Me.CurrentProgressTextLabel.Caption = CStr(CurrentPercentValue.Value) & " %"
+Me.IndicatorLabel.Width = Me.PlaceholderLabel.Width
+
+Me.Repaint
+
+End Sub
+
+Public Sub ResetProgress()
+
+CurrentLoopPercent = 0
+IgnoredLoopsCount = 0
+CurrentPercentValue.Value = 0
+Me.CurrentProgressTextLabel.Caption = CStr(CurrentPercentValue.Value) & " %"
+Me.IndicatorLabel.Width = 0
+Me.MainProcessLabel.Caption = ""
+Me.CurrentOperationLabel.Caption = ""
+
+Me.Repaint
 
 End Sub
 
@@ -105,9 +137,10 @@ If AddedPercentValue <= 0 Or AddedPercentValue > 100 Then
 End If
 
 If CurrentPercentValue.Value + AddedPercentValue > 100 Then
-    Debug.Print "Warning! Cannot increase the current progress, because the new percent's value (" & CStr(AddedPercentValue) & ") is bigger than expected."
+    'Debug.Print "Warning! Cannot increase the current progress, because the new percent's value (" & CStr(AddedPercentValue) & ") is bigger than expected."
     CurrentPercentValue.Value = 100
     Me.IndicatorLabel.Width = Me.PlaceholderLabel.Width
+    Me.Repaint
     Exit Sub
 End If
 
@@ -119,23 +152,20 @@ AddedIndicatorWidth = Me.PlaceholderLabel.Width * AddedPercentValue / 100
 
 If Me.IndicatorLabel.Width + AddedIndicatorWidth > Me.PlaceholderLabel.Width Then
     Me.IndicatorLabel.Width = Me.PlaceholderLabel.Width
+    Me.Repaint
     Exit Sub
 End If
 
 Me.IndicatorLabel.Width = Me.IndicatorLabel.Width + AddedIndicatorWidth
 
-End Sub
-
-Private Sub CloseProgressBarButton_Click()
-
-Unload Me
+Me.Repaint
 
 End Sub
 
 Private Sub UserForm_Initialize()
 
 CurrentLoopPercent = 0
-IgnoreLoopsCount = 0
+IgnoredLoopsCount = 0
 Set CurrentPercentValue = New IntegerWrapper
 CurrentPercentValue.Value = 0
 
@@ -143,7 +173,19 @@ Me.Caption = PROGRESS_BAR_TITLE
 Me.CloseProgressBarButton.Caption = CLOSE_PROGRESS_BAR_BUTTON_TITLE
 Me.DetailsFrame.Caption = DETAILS_FRAME_TITLE
 
-CloseDetailsFrame
+SetInitialDetailsFrameMode DETAILS_FRAME_OPEN
+
+End Sub
+
+Private Sub SetInitialDetailsFrameMode(ByVal mode As DetailsFrameStateType)
+
+Select Case DetailsFrameState
+    Case DETAILS_FRAME_OPEN
+        DetailsFrameState = DETAILS_FRAME_OPEN
+        Me.DetailsButton.Caption = DetailsButtonOpenStateMark & "  " & HIDE_DETAILS_BUTTON_TITLE
+    Case DETAILS_FRAME_CLOSED
+        CloseDetailsFrame
+End Select
 
 End Sub
 
@@ -165,6 +207,7 @@ Private Sub CloseDetailsFrame()
 Me.Height = Me.Height - Me.DetailsFrame.Height
 DetailsFrameState = DETAILS_FRAME_CLOSED
 Me.DetailsButton.Caption = DetailsButtonClosedStateMark & "  " & SHOW_DETAILS_BUTTON_TITLE
+Me.Repaint
 
 End Sub
 
@@ -173,19 +216,28 @@ Private Sub OpenDetailsFrame()
 Me.Height = Me.Height + Me.DetailsFrame.Height
 DetailsFrameState = DETAILS_FRAME_OPEN
 Me.DetailsButton.Caption = DetailsButtonOpenStateMark & "  " & HIDE_DETAILS_BUTTON_TITLE
+Me.Repaint
+
+End Sub
+
+Private Sub CloseProgressBarButton_Click()
+
+Unload Me
 
 End Sub
 
 Private Sub UserForm_QueryClose(Cancel As Integer, CloseMode As Integer)
 
-    'Prevent user from closing with the Close box in the title bar
-    'CloseMode vbAppWindows(2) - The current Windows operating environment session is ending
-    'CloseMode vbAppTaskManager(3) - The Windows Task Manager is closing the application
-    
-    If CloseMode < 2 Then
-        If CurrentPercentValue.Value <> 100 Then
-            Cancel = 1
-        End If
+'Prevent user from closing with the Close box in the title bar
+'CloseMode vbFormControlMenu(0) - The user has chosen the Close command from the Control menu on the UserForm.
+'CloseMode vbFormCode(1) - the Unload statement is invoked from code
+'CloseMode vbAppWindows(2) - The current Windows operating environment session is ending
+'CloseMode vbAppTaskManager(3) - The Windows Task Manager is closing the application
+
+If CloseMode < 2 Then
+    If CurrentPercentValue.Value <> 100 Then
+        Cancel = 1
     End If
+End If
     
 End Sub
