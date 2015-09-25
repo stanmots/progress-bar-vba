@@ -67,4 +67,6 @@ Next
 
 ####That's all. Thanks for your attention!
 
+**Note:** The project is open source under the [MIT License (MIT)](https://github.com/storix/progress-bar-vba/blob/master/LICENSE.md).
+
 [ProgressBarImageId]: http://s14.postimg.org/70zjqr71d/Screen_Shot_2015_01_16_at_10_54_50_PM.png  "Progress Bar"
